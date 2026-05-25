@@ -28,6 +28,8 @@ export function MemoryPanel({
   onToggleCollapsed,
   onRefresh,
   refreshing,
+  open,
+  onClose,
 }: {
   memories: MemoryEntry[];
   injectedIds: string[];
@@ -37,6 +39,9 @@ export function MemoryPanel({
   onToggleCollapsed: () => void;
   onRefresh: () => void;
   refreshing: boolean;
+  /** Mobile drawer state. Desktop ignores and always renders. */
+  open: boolean;
+  onClose: () => void;
 }) {
   const [tab, setTab] = useState<"all" | "injected">("all");
 
@@ -51,14 +56,14 @@ export function MemoryPanel({
       ? "bg-[var(--color-warn)]"
       : "bg-[var(--color-text-tertiary)] pulse-dot";
 
-  // Collapsed: thin vertical rail with toggle + count + status dot.
+  // Collapsed rail — desktop only; on mobile the panel is a drawer.
   if (collapsed) {
     return (
-      <aside className="w-[36px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-elevated)] flex flex-col items-center py-3">
+      <aside className="hidden md:flex w-[36px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-elevated)] flex-col items-center py-3">
         <button
           onClick={onToggleCollapsed}
           aria-label="expand memory panel"
-          title="show memory · ⌘."
+          title="show memory · ⌘\\"
           className="w-6 h-6 grid place-items-center font-mono text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition"
         >
           ◂
@@ -78,109 +83,153 @@ export function MemoryPanel({
   }
 
   return (
-    <aside className="w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-elevated)] flex flex-col">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-2">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onToggleCollapsed}
-              aria-label="collapse memory panel"
-              title="hide memory · ⌘."
-              className="w-5 h-5 grid place-items-center font-mono text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition"
-            >
-              ▸
-            </button>
-            <div className="font-mono text-[12px] text-[var(--color-text-secondary)]">
-              memory
+    <>
+      {/* Mobile backdrop */}
+      <div
+        onClick={onClose}
+        className={`md:hidden fixed inset-0 z-[40] bg-black/60 backdrop-blur-sm transition-opacity ${
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      />
+      <aside
+        className={`fixed md:relative z-[45] top-0 right-0 h-full w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-elevated)] flex flex-col transition-transform md:translate-x-0 ${
+          open ? "translate-x-0" : "translate-x-full md:translate-x-0"
+        }`}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onToggleCollapsed}
+                aria-label="collapse memory panel"
+                title="hide memory · ⌘\\"
+                className="hidden md:grid w-5 h-5 place-items-center font-mono text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition"
+              >
+                ▸
+              </button>
+              <button
+                onClick={onClose}
+                aria-label="close memory drawer"
+                className="md:hidden w-5 h-5 grid place-items-center font-mono text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition"
+              >
+                ✕
+              </button>
+              <div className="font-mono text-[12px] text-[var(--color-text-secondary)]">
+                memory
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onRefresh}
+                disabled={refreshing || vaultState.phase !== "ready"}
+                title="refresh"
+                className={`font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition disabled:opacity-40 ${
+                  refreshing ? "animate-pulse" : ""
+                }`}
+              >
+                ↻
+              </button>
+              <div className="font-mono text-[10px] text-[var(--color-text-tertiary)]">
+                {memories.length} total
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex gap-4 font-mono text-[11px]">
             <button
-              onClick={onRefresh}
-              disabled={refreshing || vaultState.phase !== "ready"}
-              title="refresh"
-              className={`font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition disabled:opacity-40 ${
-                refreshing ? "animate-pulse" : ""
+              onClick={() => setTab("all")}
+              className={`pb-2 border-b transition ${
+                tab === "all"
+                  ? "text-[var(--color-text-primary)] border-[var(--color-accent)]"
+                  : "text-[var(--color-text-tertiary)] border-transparent hover:text-[var(--color-text-secondary)]"
               }`}
             >
-              ↻
+              all
             </button>
-            <div className="font-mono text-[10px] text-[var(--color-text-tertiary)]">
-              {memories.length} total
-            </div>
+            <button
+              onClick={() => setTab("injected")}
+              className={`pb-2 border-b transition ${
+                tab === "injected"
+                  ? "text-[var(--color-text-primary)] border-[var(--color-accent)]"
+                  : "text-[var(--color-text-tertiary)] border-transparent hover:text-[var(--color-text-secondary)]"
+              }`}
+            >
+              touched
+              {focusIds.length > 0 && (
+                <span className="ml-1 text-[var(--color-accent)]">
+                  {focusIds.length}
+                </span>
+              )}
+            </button>
+            <div className="flex-1 border-b border-[var(--color-border)] pb-2" />
           </div>
         </div>
-        <div className="flex gap-4 font-mono text-[11px]">
-          <button
-            onClick={() => setTab("all")}
-            className={`pb-2 border-b transition ${
-              tab === "all"
-                ? "text-[var(--color-text-primary)] border-[var(--color-accent)]"
-                : "text-[var(--color-text-tertiary)] border-transparent hover:text-[var(--color-text-secondary)]"
-            }`}
-          >
-            all
-          </button>
-          <button
-            onClick={() => setTab("injected")}
-            className={`pb-2 border-b transition ${
-              tab === "injected"
-                ? "text-[var(--color-text-primary)] border-[var(--color-accent)]"
-                : "text-[var(--color-text-tertiary)] border-transparent hover:text-[var(--color-text-secondary)]"
-            }`}
-          >
-            touched
-            {focusIds.length > 0 && (
-              <span className="ml-1 text-[var(--color-accent)]">
-                {focusIds.length}
-              </span>
-            )}
-          </button>
-          <div className="flex-1 border-b border-[var(--color-border)] pb-2" />
-        </div>
-      </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto thin-scroll p-3 space-y-1.5">
-        {vaultState.phase === "loading" && list.length === 0 && (
-          <div className="px-3 py-8 text-center font-mono text-[11px] text-[var(--color-text-tertiary)]">
-            opening vault…
-          </div>
-        )}
-        {vaultState.phase === "error" && (
-          <div className="px-3 py-3 border border-[var(--color-warn)]/40 bg-[var(--color-warn)]/[0.05] font-mono text-[10.5px] text-[var(--color-warn)] leading-[1.5]">
-            <div className="font-medium mb-1">vault error</div>
-            <div className="text-[var(--color-text-secondary)] break-words">
-              {vaultState.message}
+        {/* List */}
+        <div className="flex-1 overflow-y-auto thin-scroll p-3 space-y-1.5">
+          {vaultState.phase === "loading" && list.length === 0 && (
+            <SkeletonCards />
+          )}
+          {vaultState.phase === "error" && (
+            <div className="px-3 py-3 border border-[var(--color-warn)]/40 bg-[var(--color-warn)]/[0.05] font-mono text-[10.5px] text-[var(--color-warn)] leading-[1.5]">
+              <div className="font-medium mb-1">vault error</div>
+              <div className="text-[var(--color-text-secondary)] break-words">
+                {vaultState.message}
+              </div>
             </div>
-          </div>
-        )}
-        {vaultState.phase === "ready" && list.length === 0 && (
-          <div className="px-3 py-8 text-center font-mono text-[11px] text-[var(--color-text-tertiary)]">
-            {tab === "injected"
-              ? "no memories touched in this turn"
-              : "vault is empty — chat to populate it"}
-          </div>
-        )}
-        {list.map((m) => (
-          <MemoryCard
-            key={m.id}
-            memory={m}
-            highlight={focusIds.includes(m.id)}
+          )}
+          {vaultState.phase === "ready" && list.length === 0 && (
+            <div className="px-3 py-8 text-center font-mono text-[11px] text-[var(--color-text-tertiary)]">
+              {tab === "injected"
+                ? "no memories touched in this turn"
+                : "vault is empty — chat to populate it"}
+            </div>
+          )}
+          {list.map((m) => (
+            <MemoryCard
+              key={m.id}
+              memory={m}
+              highlight={focusIds.includes(m.id)}
+            />
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-[var(--color-border)] px-5 py-3 font-mono text-[10px] text-[var(--color-text-tertiary)] flex items-center justify-between">
+          <span className="truncate pr-2">embed local · TEE · MPC · polls 20s</span>
+          <span
+            title={vaultState.phase}
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusDot}`}
           />
-        ))}
-      </div>
+        </div>
+      </aside>
+    </>
+  );
+}
 
-      {/* Footer */}
-      <div className="border-t border-[var(--color-border)] px-5 py-3 font-mono text-[10px] text-[var(--color-text-tertiary)] flex items-center justify-between">
-        <span>embed local · TEE · MPC at rest · polls 20s</span>
-        <span
-          title={vaultState.phase}
-          className={`h-1.5 w-1.5 rounded-full ${statusDot}`}
-        />
+function SkeletonCards() {
+  // Three pulsing placeholder cards while the vault opens (~3-5s on first
+  // load — shorter on warm reloads).
+  return (
+    <div className="space-y-1.5">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="px-3 py-2.5 border border-[var(--color-border)] bg-[var(--color-input)]/30 animate-pulse"
+          style={{ animationDelay: `${i * 100}ms` }}
+        >
+          <div className="h-2 w-[80%] bg-[var(--color-border-strong)] mb-2" />
+          <div className="h-2 w-[60%] bg-[var(--color-border)]" />
+          <div className="flex items-center justify-between mt-3">
+            <div className="h-1.5 w-12 bg-[var(--color-border)]" />
+            <div className="h-1.5 w-6 bg-[var(--color-border)]" />
+          </div>
+        </div>
+      ))}
+      <div className="text-center font-mono text-[10px] text-[var(--color-text-tertiary)] mt-3">
+        opening vault…
       </div>
-    </aside>
+    </div>
   );
 }
 

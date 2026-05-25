@@ -20,10 +20,12 @@ function formatContent(content: string) {
 export function ChatThread({
   messages,
   onHoverMemoryIds,
+  vaultPhase,
 }: {
   messages: Message[];
   selectedMemoryIds: string[];
   onHoverMemoryIds: (ids: string[]) => void;
+  vaultPhase: "loading" | "ready" | "error";
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -49,8 +51,21 @@ export function ChatThread({
           <div className="font-mono text-[13px] text-[var(--color-text-secondary)]">
             private chat with portable memory
           </div>
-          <div className="font-mono text-[11px] text-[var(--color-text-tertiary)] pt-6">
-            type below to start · venice inference · embed local
+          <div className="font-mono text-[11px] text-[var(--color-text-tertiary)] pt-6 flex items-center justify-center gap-2">
+            {vaultPhase === "loading" && (
+              <>
+                <span className="h-1.5 w-1.5 bg-[var(--color-accent)] rounded-full pulse-dot" />
+                <span>opening vault · this takes 3–5s on first load</span>
+              </>
+            )}
+            {vaultPhase === "ready" && (
+              <span>type below to start · venice inference · embed local</span>
+            )}
+            {vaultPhase === "error" && (
+              <span className="text-[var(--color-warn)]">
+                vault failed to open — check settings
+              </span>
+            )}
           </div>
         </div>
       </div>

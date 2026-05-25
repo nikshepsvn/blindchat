@@ -4,6 +4,42 @@ import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 
+// Strict-ish CSP. The Nillion testnet + Venice API are the only external
+// origins we talk to; everything else stays self. Dev tooling needs unsafe-
+// eval for Next.js HMR; we relax this only outside production.
+const isProd = process.env.NODE_ENV === "production";
+
+const CSP = [
+  "default-src 'self'",
+  // Next inlines style tags; transformers.js + libsodium need wasm-unsafe-eval
+  // and unsafe-eval (Emscripten). Restricting script-src tighter than this
+  // breaks both packages.
+  isProd
+    ? "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'"
+    : "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "worker-src 'self' blob:",
+  // Network calls. Venice for inference; nilDB testnet nodes for the vault;
+  // huggingface CDN for the embedding model weights on first load.
+  "connect-src 'self' https://api.venice.ai https://*.nillion.network https://huggingface.co https://*.huggingface.co https://cdn-lfs.huggingface.co",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  // Lock down what the page can be downgraded to.
+  "upgrade-insecure-requests",
+].join("; ");
+
+const SECURITY_HEADERS = [
+  { key: "Content-Security-Policy", value: CSP },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: [
@@ -12,6 +48,15 @@ const nextConfig: NextConfig = {
     "@nillion/nuc",
     "@nillion/nilai-ts",
   ],
+  async headers() {
+    return [
+      {
+        // Apply to every path.
+        source: "/:path*",
+        headers: SECURITY_HEADERS,
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
 

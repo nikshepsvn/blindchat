@@ -8,17 +8,13 @@ import { MessageInput } from "@/components/MessageInput";
 import { OnboardingProvider } from "@/components/Onboarding";
 import { Setup } from "@/components/Setup";
 import { Settings } from "@/components/Settings";
-import { seedMessages, type Message } from "@/lib/mockData";
+import { type Message } from "@/lib/mockData";
 import { type VeniceMessage } from "@/lib/venice";
 import { runMemoryTurn, memoryModeFor } from "@/lib/memoryWrapper";
 import { useVault } from "@/lib/useVault";
 import { useVeniceCreds } from "@/lib/useVeniceKey";
+import { useConversations } from "@/lib/useConversations";
 import { kvGet, kvSet, STORAGE_KEYS } from "@/lib/storage";
-import {
-  readConversation,
-  writeConversation,
-  clearConversation,
-} from "@/lib/conversation";
 
 const BASE_SYSTEM = `You are BlindChat — a private, terminal-styled assistant. Be concise and direct. Markdown bold uses **double asterisks**.`;
 
@@ -28,12 +24,12 @@ function shortTime(): string {
 
 export default function ChatPage() {
   const [hoveredIds, setHoveredIds] = useState<string[]>([]);
-  const [messages, setMessages] = useState<Message[]>(seedMessages);
-  const [convHydrated, setConvHydrated] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [memoryOpen, setMemoryOpen] = useState(false); // mobile drawer
   const abortRef = useRef<AbortController | null>(null);
 
   const { state: vaultState, memories, refresh, refreshing } = useVault();
@@ -43,27 +39,15 @@ export default function ChatPage() {
     setModel,
     reload: reloadCreds,
   } = useVeniceCreds();
-
-  // Restore the prior conversation from IDB on mount.
-  useEffect(() => {
-    (async () => {
-      const prior = await readConversation();
-      if (prior.length > 0) setMessages(prior);
-      setConvHydrated(true);
-    })();
-  }, []);
-
-  // Persist on every message change (but not until hydrated, otherwise the
-  // initial empty seed would wipe what's in IDB).
-  useEffect(() => {
-    if (!convHydrated) return;
-    if (isStreaming) return; // don't churn IDB during a stream; save on finish
-    if (messages.length === 0) {
-      clearConversation().catch(() => {});
-    } else {
-      writeConversation(messages).catch(() => {});
-    }
-  }, [messages, convHydrated, isStreaming]);
+  const {
+    threads,
+    activeId,
+    messages,
+    setMessages,
+    switchTo,
+    newChat,
+    deleteThread,
+  } = useConversations();
 
   useEffect(() => {
     (async () => {
@@ -80,38 +64,22 @@ export default function ChatPage() {
     });
   }, []);
 
-  // Two-click confirm: first click sets pending, second click within 4s
-  // commits. Native confirm() blocks the page and we don't want that.
-  const [newChatPending, setNewChatPending] = useState(false);
-  const newChatTimer = useRef<number | null>(null);
-
-  const handleNewChat = useCallback(() => {
-    if (isStreaming) {
-      abortRef.current?.abort();
-    }
-    if (messages.length === 0) {
-      // Nothing to clear — never need a confirm.
-      return;
-    }
-    if (!newChatPending) {
-      setNewChatPending(true);
-      if (newChatTimer.current) window.clearTimeout(newChatTimer.current);
-      newChatTimer.current = window.setTimeout(() => {
-        setNewChatPending(false);
-        newChatTimer.current = null;
-      }, 4000);
-      return;
-    }
-    // Confirmed.
-    if (newChatTimer.current) {
-      window.clearTimeout(newChatTimer.current);
-      newChatTimer.current = null;
-    }
-    setNewChatPending(false);
-    setMessages([]);
+  const handleNewChat = useCallback(async () => {
+    if (isStreaming) abortRef.current?.abort();
+    await newChat();
     setError(null);
-    clearConversation().catch(() => {});
-  }, [isStreaming, messages.length, newChatPending]);
+    setSidebarOpen(false);
+  }, [isStreaming, newChat]);
+
+  const handleSwitchThread = useCallback(
+    async (id: string) => {
+      if (isStreaming) abortRef.current?.abort();
+      await switchTo(id);
+      setError(null);
+      setSidebarOpen(false);
+    },
+    [isStreaming, switchTo]
+  );
 
   async function handleSend(text: string) {
     if (isStreaming) return;
@@ -259,15 +227,42 @@ export default function ChatPage() {
         vaultPhase={vaultState.phase}
         onOpenSettings={() => setSettingsOpen(true)}
         onNewChat={handleNewChat}
-        hasMessages={messages.length > 0}
-        newChatPending={newChatPending}
+        threads={threads}
+        activeId={activeId}
+        onSwitchThread={handleSwitchThread}
+        onDeleteThread={deleteThread}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <section className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-elevated)]">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="font-mono text-[16px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition"
+            aria-label="open sidebar"
+          >
+            ☰
+          </button>
+          <span className="font-[var(--font-display)] text-[16px] text-[var(--color-accent-bright)] glow">
+            blindchat
+          </span>
+          <button
+            onClick={() => setMemoryOpen(true)}
+            className="font-mono text-[14px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition"
+            aria-label="open memory"
+            title="memory"
+          >
+            ▤
+          </button>
+        </div>
+
         <ChatThread
           messages={messages}
           selectedMemoryIds={hoveredIds}
           onHoverMemoryIds={setHoveredIds}
+          vaultPhase={vaultState.phase}
         />
         {error && (
           <div className="border-t border-[var(--color-border)] bg-[var(--color-elevated)] px-8 py-2 font-mono text-[11px] text-[var(--color-warn)]">
@@ -294,6 +289,8 @@ export default function ChatPage() {
         onToggleCollapsed={togglePanel}
         onRefresh={refresh}
         refreshing={refreshing}
+        open={memoryOpen}
+        onClose={() => setMemoryOpen(false)}
       />
     </main>
   );
