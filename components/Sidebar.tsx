@@ -4,8 +4,10 @@ import { OPEN_ONBOARDING_EVENT } from "@/components/Onboarding";
 
 export function Sidebar({
   vaultPhase,
+  onOpenSettings,
 }: {
   vaultPhase: "loading" | "ready" | "error";
+  onOpenSettings: () => void;
 }) {
   const statusColor =
     vaultPhase === "ready"
@@ -48,6 +50,13 @@ export function Sidebar({
             title="re-open the welcome tour"
           >
             intro
+          </button>
+          <button
+            onClick={onOpenSettings}
+            className="hover:text-[var(--color-accent)] transition"
+            title="keys, backup, reset"
+          >
+            settings
           </button>
         </div>
       </div>

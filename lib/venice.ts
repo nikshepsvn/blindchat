@@ -51,6 +51,11 @@ export type TurnEvent =
  * final "done" event with any tool calls and the full content. The caller is
  * responsible for orchestrating the tool execution loop.
  */
+// Hard ceiling on a single turn. Reasoning models (GLM, GPT-OSS) can sit on
+// Venice's gateway for 60–90s; past that we'd rather fail with a useful
+// message than hang the UI forever.
+const TURN_TIMEOUT_MS = 90_000;
+
 export async function* streamVeniceTurn({
   apiKey,
   model,
@@ -70,21 +75,53 @@ export async function* streamVeniceTurn({
   if (reasoning_effort) body.reasoning_effort = reasoning_effort;
   if (typeof max_tokens === "number") body.max_tokens = max_tokens;
 
-  const res = await fetch(`${VENICE_BASE}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  // Combine the caller's abort signal with a per-turn timeout.
+  const timeoutCtl = new AbortController();
+  const timer = setTimeout(() => timeoutCtl.abort(), TURN_TIMEOUT_MS);
+  const combinedSignal = signal
+    ? anySignal([signal, timeoutCtl.signal])
+    : timeoutCtl.signal;
+
+  let res: Response;
+  try {
+    res = await fetch(`${VENICE_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: combinedSignal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (timeoutCtl.signal.aborted && (!signal || !signal.aborted)) {
+      throw new Error(
+        `${model} didn't respond in 90s. Try a faster model (Qwen3 30B A3B) or retry.`
+      );
+    }
+    throw e;
+  }
 
   if (!res.ok) {
+    clearTimeout(timer);
     const txt = await res.text();
+    if (res.status === 504) {
+      throw new Error(
+        `${model} timed out at Venice's gateway (504). Reasoning models are slow today — try Qwen3 30B A3B or retry.`
+      );
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Venice rejected your API key (HTTP ${res.status}). Update it in settings.`
+      );
+    }
     throw new Error(`Venice API ${res.status}: ${txt.slice(0, 200)}`);
   }
-  if (!res.body) throw new Error("Venice returned empty body");
+  if (!res.body) {
+    clearTimeout(timer);
+    throw new Error("Venice returned empty body");
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -154,7 +191,21 @@ export async function* streamVeniceTurn({
     void idx;
   }
 
+  clearTimeout(timer);
   yield { kind: "done", content, toolCalls, finishReason };
+}
+
+/** Combine multiple AbortSignals — aborts when any of them aborts. */
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  const ctl = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      ctl.abort(s.reason);
+      break;
+    }
+    s.addEventListener("abort", () => ctl.abort(s.reason), { once: true });
+  }
+  return ctl.signal;
 }
 
 // Note: key + model accessors live in lib/veniceKey.ts now (IndexedDB-backed,

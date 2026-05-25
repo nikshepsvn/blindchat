@@ -55,5 +55,14 @@ export function useVeniceCreds() {
     setState((s) => ({ ...s, model: modelId }));
   }, []);
 
-  return { state, setVeniceKey, clearVeniceKey, setModel };
+  /** Re-read from IDB. Used after settings panel mutates keys directly. */
+  const reload = useCallback(async () => {
+    const [veniceKey, model] = await Promise.all([
+      readVeniceKey(),
+      readVeniceModel(),
+    ]);
+    setState({ ready: true, veniceKey, model });
+  }, []);
+
+  return { state, setVeniceKey, clearVeniceKey, setModel, reload };
 }

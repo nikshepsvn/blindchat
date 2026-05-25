@@ -7,6 +7,7 @@ import { MemoryPanel } from "@/components/MemoryPanel";
 import { MessageInput } from "@/components/MessageInput";
 import { OnboardingProvider } from "@/components/Onboarding";
 import { Setup } from "@/components/Setup";
+import { Settings } from "@/components/Settings";
 import { seedMessages, type Message } from "@/lib/mockData";
 import { type VeniceMessage } from "@/lib/venice";
 import { runMemoryTurn, memoryModeFor } from "@/lib/memoryWrapper";
@@ -26,6 +27,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const { state: vaultState, memories, refresh, refreshing } = useVault();
@@ -33,6 +35,7 @@ export default function ChatPage() {
     state: credsState,
     setVeniceKey,
     setModel,
+    reload: reloadCreds,
   } = useVeniceCreds();
 
   useEffect(() => {
@@ -182,7 +185,15 @@ export default function ChatPage() {
     <main className="h-screen w-screen flex bg-[var(--color-base)] overflow-hidden">
       <OnboardingProvider />
       {needsSetup && <Setup onComplete={setVeniceKey} />}
-      <Sidebar vaultPhase={vaultState.phase} />
+      <Settings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onCredsChanged={reloadCreds}
+      />
+      <Sidebar
+        vaultPhase={vaultState.phase}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       <section className="flex-1 flex flex-col min-w-0">
         <ChatThread
