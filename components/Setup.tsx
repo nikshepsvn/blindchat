@@ -39,8 +39,8 @@ export function Setup({ onComplete }: { onComplete: (key: string) => void }) {
   const busy = phase === "validating" || phase === "saving";
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm">
-      <div className="relative w-[520px] max-w-[94vw] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm backdrop-in">
+      <div className="relative w-[520px] max-w-[94vw] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col modal-in">
         <div className="px-7 pt-7 pb-2">
           <div className="font-mono text-[10px] text-[var(--color-accent)] tracking-[0.28em] mb-2">
             SETUP · 01 / 01

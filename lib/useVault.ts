@@ -68,5 +68,41 @@ export function useVault(pollMs = 20_000) {
     };
   }, [state.phase, pollMs, refresh]);
 
-  return { state, memories, refresh, refreshing };
+  const deleteOne = useCallback(
+    async (id: string) => {
+      const vault = await openVault();
+      await vault.delete(id);
+      // Optimistic update so the card disappears immediately; refresh
+      // reconciles with the truth from nilDB.
+      setMemories((curr) => curr.filter((m) => m.id !== id));
+      refresh().catch(() => {});
+    },
+    [refresh]
+  );
+
+  const deleteAll = useCallback(
+    async (onProgress?: (done: number, total: number) => void) => {
+      const vault = await openVault();
+      // Pull the full list (max page) — list() already caps to 50, so we
+      // loop until empty in case there are more.
+      let removed = 0;
+      while (true) {
+        const list = await vault.list(50);
+        if (list.length === 0) break;
+        const total = removed + list.length;
+        for (const entry of list) {
+          await vault.delete(entry.id);
+          removed++;
+          onProgress?.(removed, total);
+        }
+        // If we got fewer than 50, no more pages.
+        if (list.length < 50) break;
+      }
+      setMemories([]);
+      return removed;
+    },
+    []
+  );
+
+  return { state, memories, refresh, refreshing, deleteOne, deleteAll };
 }

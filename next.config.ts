@@ -12,11 +12,12 @@ const isProd = process.env.NODE_ENV === "production";
 const CSP = [
   "default-src 'self'",
   // Next inlines style tags; transformers.js + libsodium need wasm-unsafe-eval
-  // and unsafe-eval (Emscripten). Restricting script-src tighter than this
-  // breaks both packages.
+  // and unsafe-eval (Emscripten); onnxruntime-web dynamically imports its
+  // WASM worker via a blob: URL, so we have to allow blob: in script-src too.
+  // Restricting tighter than this breaks the embedder.
   isProd
-    ? "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'"
-    : "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' 'unsafe-inline'",
+    ? "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' blob:"
+    : "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' 'unsafe-inline' blob:",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",

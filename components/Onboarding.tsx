@@ -193,12 +193,12 @@ export function OnboardingProvider() {
 
   return (
     <div
-      className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm backdrop-in"
       onClick={dismiss}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[640px] max-w-[94vw] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col"
+        className="relative w-[640px] max-w-[94vw] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col modal-in"
       >
         {/* Close — floating */}
         <button

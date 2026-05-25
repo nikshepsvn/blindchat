@@ -44,7 +44,7 @@ Rules:
 - Use LIST when the user asks what you remember about them.
 - Use DELETE only when the user explicitly asks to forget something.
 - Output raw JSON inside markers — no markdown fences, no commentary.
-- If you see a <search-result> or <list-result> block in this conversation, USE THOSE FACTS. Do NOT emit another query marker for the same topic — answer directly.`;
+- If you see a <search-result>, <list-result>, or <tool-result> block in this conversation, USE THOSE FACTS. Do NOT emit another query marker for the same topic — answer directly. If a result block starts with "ERROR:", tell the user the operation FAILED and quote the error.`;
 
 const NATIVE_PROMPT = `You have four memory tools backed by an encrypted vault: save_memory, search_memory, list_recent_memories, delete_memory.
 
@@ -53,7 +53,8 @@ Rules:
 - If the user references past info, call search_memory first.
 - If the user asks what you know about them, call list_recent_memories.
 - Don't save every utterance — only durable facts.
-- After a tool call, briefly confirm in plain text.`;
+- After a successful tool call, briefly confirm in plain text (e.g., "Saved.").
+- If the tool result starts with "ERROR:" — the operation FAILED. Tell the user honestly that the save/search/etc did not work, and quote the error message. Do NOT say "Saved." or pretend it worked.`;
 
 export type MemoryMode = "native" | "compat" | "off";
 
@@ -212,9 +213,14 @@ async function* runCompat(opts: RunOptions): AsyncGenerator<MemoryEvent> {
     const blocks = parseAllMarkers(raw);
     if (blocks.length === 0) return;
 
-    // Execute every block. Track which ones need a follow-up turn (queries).
+    // Execute every block. Track:
+    //   - queries (need a follow-up turn so the model can use the results)
+    //   - failures (need a follow-up so the model can tell the user it
+    //     actually failed instead of claiming success)
     const queryResults: { kind: "search" | "list"; label: string; content: string }[] = [];
+    const failures: { kind: string; label: string; content: string }[] = [];
     let didQuery = false;
+    let anyFailure = false;
 
     for (const b of blocks) {
       const result = await execBlock(b);
@@ -225,42 +231,68 @@ async function* runCompat(opts: RunOptions): AsyncGenerator<MemoryEvent> {
         summary: summarizeBlock(b, result),
         entryIds: result.entries?.map((e) => e.id) ?? [],
       };
+      if (!result.ok) {
+        anyFailure = true;
+        const label =
+          b.kind === "SAVE"
+            ? String(b.args.content ?? "").slice(0, 60)
+            : b.kind === "DELETE"
+            ? String(b.args.id ?? "")
+            : b.kind === "SEARCH"
+            ? String(b.args.query ?? "")
+            : "(recent)";
+        failures.push({ kind: b.kind, label, content: result.content });
+      }
       if (b.kind === "SEARCH" || b.kind === "LIST") {
         didQuery = true;
-        const label =
-          b.kind === "SEARCH" ? String(b.args.query ?? "") : "(recent)";
-        queryResults.push({
-          kind: b.kind === "SEARCH" ? "search" : "list",
-          label,
-          content: result.content,
-        });
+        if (result.ok) {
+          const label =
+            b.kind === "SEARCH" ? String(b.args.query ?? "") : "(recent)";
+          queryResults.push({
+            kind: b.kind === "SEARCH" ? "search" : "list",
+            label,
+            content: result.content,
+          });
+        }
       }
     }
 
-    if (!didQuery) return;
-    if (queriedAlready) return; // safety: one query round per turn
+    // Skip the second turn if everything succeeded and there were no queries
+    // — the model's turn-1 text is the final answer (fast path for saves).
+    if (!didQuery && !anyFailure) return;
+    if (queriedAlready) return; // safety: one follow-up round per turn
 
-    // If every query came back empty, the model has nothing to use — skip the
-    // second turn entirely. Saves a roundtrip; the model already wrote a reply.
-    const anyHits = queryResults.some(
+    // Also short-circuit when the only thing left is empty query results.
+    const anyQueryHits = queryResults.some(
       (r) => r.content && !r.content.startsWith("(")
     );
-    if (!anyHits) return;
+    if (!anyQueryHits && !anyFailure) return;
 
     queriedAlready = true;
 
-    // Push the assistant's visible reply + result block, then loop.
+    // Push the assistant's visible reply + a tool-result block describing
+    // what happened. Failures get their own block so the model has to
+    // correct its earlier guess.
     const visibleOnly = stripMarkers(raw).trim() || "Let me check.";
     history.push({ role: "assistant", content: visibleOnly });
-    const resultBlock = queryResults
-      .map(
-        (r) =>
-          `<${r.kind}-result query="${escapeAttr(r.label)}">\n${r.content}\n</${r.kind}-result>`
-      )
-      .join("\n\n");
+
+    const blockParts: string[] = [];
+    for (const r of queryResults) {
+      blockParts.push(
+        `<${r.kind}-result query="${escapeAttr(r.label)}">\n${r.content}\n</${r.kind}-result>`
+      );
+    }
+    for (const f of failures) {
+      blockParts.push(
+        `<tool-result tool="${f.kind.toLowerCase()}" status="error" target="${escapeAttr(f.label)}">\n${f.content}\n</tool-result>`
+      );
+    }
+    const instruction = anyFailure
+      ? `Your previous reply already went to the user, but at least one operation FAILED. Now write a SHORT correction: tell the user the operation did not succeed and quote the error from the tool-result block. Do not emit another marker.`
+      : `Now answer my original question using ONLY these facts. Do not emit another query marker.`;
     history.push({
       role: "user",
-      content: `${resultBlock}\n\nNow answer my original question using ONLY these facts. Do not emit another query marker.`,
+      content: `${blockParts.join("\n\n")}\n\n${instruction}`,
     });
   }
 }
@@ -414,11 +446,15 @@ function blockToolName(kind: Block["kind"]): string {
 }
 
 function summarizeBlock(b: Block, result: ToolResult): string {
+  // For failures, surface the actual error message — "save failed" alone
+  // taught us nothing.
+  if (!result.ok) {
+    const reason = result.content.replace(/^ERROR:\s*\w+\s+FAILED\.\s*/, "").slice(0, 80);
+    return `${b.kind.toLowerCase()} failed · ${reason}`;
+  }
   if (b.kind === "SAVE") {
     const preview = String(b.args.content ?? "").slice(0, 50);
-    return result.ok
-      ? `saved · "${preview}${preview.length >= 50 ? "…" : ""}"`
-      : `save failed`;
+    return `saved · "${preview}${preview.length >= 50 ? "…" : ""}"`;
   }
   if (b.kind === "SEARCH") {
     const q = String(b.args.query ?? "").slice(0, 40);
@@ -431,7 +467,7 @@ function summarizeBlock(b: Block, result: ToolResult): string {
   }
   if (b.kind === "DELETE") {
     const id = String(b.args.id ?? "").slice(0, 8);
-    return result.ok ? `deleted id=${id}…` : `delete failed`;
+    return `deleted id=${id}…`;
   }
   return b.kind;
 }
@@ -447,11 +483,14 @@ function summarizeToolCall(
   } catch {
     /* ignore */
   }
+  // Surface the actual error so the user sees what went wrong, not just "failed".
+  if (!result.ok) {
+    const reason = result.content.replace(/^ERROR:\s*\w+\s+FAILED\.\s*/, "").slice(0, 80);
+    return `${name.replace("_memory", "").replace("_recent_memories", " recent")} failed · ${reason}`;
+  }
   if (name === "save_memory") {
     const preview = String(args.content ?? "").slice(0, 50);
-    return result.ok
-      ? `saved · "${preview}${preview.length >= 50 ? "…" : ""}"`
-      : `save failed`;
+    return `saved · "${preview}${preview.length >= 50 ? "…" : ""}"`;
   }
   if (name === "search_memory") {
     const q = String(args.query ?? "").slice(0, 40);
@@ -464,7 +503,7 @@ function summarizeToolCall(
   }
   if (name === "delete_memory") {
     const id = String(args.id ?? "").slice(0, 8);
-    return result.ok ? `deleted id=${id}…` : `delete failed`;
+    return `deleted id=${id}…`;
   }
   return name;
 }

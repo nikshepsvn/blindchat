@@ -7,6 +7,7 @@ import {
   saveConversation,
   createConversation,
   deleteConversation,
+  clearAllConversations,
   getActiveConversationId,
   setActiveConversation,
   type ConversationMeta,
@@ -98,6 +99,15 @@ export function useConversations() {
       .catch(() => {});
   }, [messages, activeId, hydrated, refreshThreads]);
 
+  /** Wipe all conversations, then immediately mint a fresh empty one. */
+  const clearAll = useCallback(async () => {
+    await clearAllConversations();
+    const fresh = await createConversation();
+    setThreads([fresh]);
+    setActiveIdState(fresh.id);
+    setMessages([]);
+  }, []);
+
   return {
     hydrated,
     threads,
@@ -107,5 +117,6 @@ export function useConversations() {
     switchTo,
     newChat,
     deleteThread,
+    clearAll,
   };
 }

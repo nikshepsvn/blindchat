@@ -156,3 +156,13 @@ export async function setActiveConversation(id: string): Promise<void> {
   await kvSet(ACTIVE_KEY, id);
 }
 
+/** Wipe every conversation + the active pointer. Doesn't touch the vault. */
+export async function clearAllConversations(): Promise<void> {
+  const index = (await kvGet<ConversationMeta[]>(INDEX_KEY)) ?? [];
+  for (const meta of index) {
+    await kvDelete(`${PREFIX}${meta.id}`);
+  }
+  await kvDelete(INDEX_KEY);
+  await kvDelete(ACTIVE_KEY);
+}
+

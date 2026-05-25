@@ -32,7 +32,14 @@ export default function ChatPage() {
   const [memoryOpen, setMemoryOpen] = useState(false); // mobile drawer
   const abortRef = useRef<AbortController | null>(null);
 
-  const { state: vaultState, memories, refresh, refreshing } = useVault();
+  const {
+    state: vaultState,
+    memories,
+    refresh,
+    refreshing,
+    deleteOne: deleteMemory,
+    deleteAll: clearAllMemories,
+  } = useVault();
   const {
     state: credsState,
     setVeniceKey,
@@ -47,6 +54,7 @@ export default function ChatPage() {
     switchTo,
     newChat,
     deleteThread,
+    clearAll: clearAllChats,
   } = useConversations();
 
   useEffect(() => {
@@ -222,6 +230,8 @@ export default function ChatPage() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onCredsChanged={reloadCreds}
+        onClearChats={clearAllChats}
+        onClearMemories={clearAllMemories}
       />
       <Sidebar
         vaultPhase={vaultState.phase}
@@ -289,6 +299,7 @@ export default function ChatPage() {
         onToggleCollapsed={togglePanel}
         onRefresh={refresh}
         refreshing={refreshing}
+        onDeleteMemory={deleteMemory}
         open={memoryOpen}
         onClose={() => setMemoryOpen(false)}
       />

@@ -78,7 +78,7 @@ export function ChatThread({
         {messages.map((msg) => {
           const isUser = msg.role === "user";
           return (
-            <div key={msg.id} className="space-y-2">
+            <div key={msg.id} className="space-y-2 fade-in">
               <div className="flex items-center gap-3 font-mono text-[11px] text-[var(--color-text-tertiary)]">
                 <span
                   className={

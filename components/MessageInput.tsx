@@ -37,9 +37,15 @@ function MemoryStatus({
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 px-2 py-1 border border-[var(--color-border)] bg-[var(--color-input)] font-mono text-[10px] ${color}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-1 border border-[var(--color-border)] bg-[var(--color-input)] font-mono text-[10px] transition-colors duration-200 ${color}`}
     >
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+      <span
+        className={`inline-block h-1.5 w-1.5 rounded-full bg-current ${
+          vaultPhase === "ready" && memoryMode !== "off"
+            ? "shadow-[0_0_6px_currentColor] opacity-100"
+            : "opacity-80"
+        }`}
+      />
       {label}
     </span>
   );
@@ -83,7 +89,7 @@ export function MessageInput({
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-elevated)]">
       <div className="max-w-[720px] mx-auto px-8 py-4">
-        <div className="relative border border-[var(--color-border)] focus-within:border-[var(--color-accent-dim)] bg-[var(--color-input)] transition">
+        <div className="relative border border-[var(--color-border)] focus-within:border-[var(--color-accent-dim)] focus-within:shadow-[0_0_0_1px_var(--color-accent-dim),0_0_20px_-8px_var(--color-accent)/30] bg-[var(--color-input)] transition-shadow duration-200">
           <textarea
             ref={taRef}
             value={value}
@@ -97,7 +103,7 @@ export function MessageInput({
           {isStreaming ? (
             <button
               onClick={onStop}
-              className="absolute bottom-3 right-3 h-9 w-9 grid place-items-center bg-[var(--color-warn)] hover:opacity-90 text-[var(--color-base)] font-bold transition"
+              className="absolute bottom-3 right-3 h-9 w-9 grid place-items-center bg-[var(--color-warn)] hover:opacity-90 text-[var(--color-base)] font-bold transition-all duration-150 active:scale-95"
               aria-label="stop"
             >
               ◼
@@ -106,7 +112,7 @@ export function MessageInput({
             <button
               onClick={submit}
               disabled={!value.trim()}
-              className="absolute bottom-3 right-3 h-9 w-9 grid place-items-center bg-[var(--color-accent)] hover:bg-[var(--color-accent-bright)] disabled:bg-[var(--color-border)] disabled:text-[var(--color-text-tertiary)] text-[var(--color-base)] font-bold transition"
+              className="absolute bottom-3 right-3 h-9 w-9 grid place-items-center bg-[var(--color-accent)] hover:bg-[var(--color-accent-bright)] disabled:bg-[var(--color-border)] disabled:text-[var(--color-text-tertiary)] text-[var(--color-base)] font-bold transition-all duration-150 active:scale-95 enabled:hover:shadow-[0_0_20px_-6px_var(--color-accent)]"
               aria-label="send"
             >
               ↑

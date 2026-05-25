@@ -21,11 +21,19 @@ export function Settings({
   open,
   onClose,
   onCredsChanged,
+  onClearChats,
+  onClearMemories,
 }: {
   open: boolean;
   onClose: () => void;
   /** Fired when the venice key changes, so the parent can re-read creds. */
   onCredsChanged: () => void;
+  /** Wipe all local conversations (preserves the vault). */
+  onClearChats: () => Promise<void>;
+  /** Iterate vault.delete for every entry. May take 10-30s for many. */
+  onClearMemories: (
+    onProgress?: (done: number, total: number) => void
+  ) => Promise<number>;
 }) {
   const [veniceKey, setVeniceKeyState] = useState<string | null>(null);
   const [nucKey, setNucKey] = useState<string | null>(null);
@@ -169,16 +177,66 @@ export function Settings({
     setMessage("Reset complete. Reload to start fresh.");
   }
 
+  const [chatsPending, setChatsPending] = useState(false);
+  const [chatsBusy, setChatsBusy] = useState(false);
+  async function handleClearChats() {
+    if (!chatsPending) {
+      setChatsPending(true);
+      setTimeout(() => setChatsPending(false), 4000);
+      return;
+    }
+    setChatsPending(false);
+    setChatsBusy(true);
+    try {
+      await onClearChats();
+      setPhase("success");
+      setMessage("All chats cleared. A fresh empty thread is open.");
+    } finally {
+      setChatsBusy(false);
+    }
+  }
+
+  const [memPending, setMemPending] = useState(false);
+  const [memBusy, setMemBusy] = useState(false);
+  const [memProgress, setMemProgress] = useState<{ done: number; total: number } | null>(null);
+  async function handleClearMemories() {
+    if (!memPending) {
+      setMemPending(true);
+      setTimeout(() => setMemPending(false), 4000);
+      return;
+    }
+    setMemPending(false);
+    setMemBusy(true);
+    setMemProgress({ done: 0, total: 0 });
+    try {
+      const removed = await onClearMemories((done, total) => {
+        setMemProgress({ done, total });
+      });
+      setPhase("success");
+      setMessage(
+        removed === 0
+          ? "Vault was already empty."
+          : `Deleted ${removed} memor${removed === 1 ? "y" : "ies"} from the vault.`
+      );
+    } catch (e) {
+      setPhase("error");
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMemBusy(false);
+      setMemProgress(null);
+    }
+  }
+
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[450] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-[450] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm backdrop-in"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[600px] max-w-[94vw] max-h-[90vh] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col"
+        className="relative w-[600px] max-w-[94vw] max-h-[90vh] bg-[var(--color-panel)] border border-[var(--color-border-strong)] shadow-[0_24px_72px_rgba(0,0,0,0.85)] flex flex-col modal-in"
       >
         <button
           onClick={onClose}
@@ -308,10 +366,55 @@ export function Settings({
             </p>
           </Section>
 
-          {/* Danger */}
+          {/* Granular clears */}
+          <Section
+            title="clear data"
+            subtitle="targeted deletes — local chats stay local; memory deletes go to the vault and can't be undone."
+            warn
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleClearChats}
+                disabled={chatsBusy}
+                className={`font-mono text-[10.5px] uppercase tracking-[0.16em] px-3 py-1.5 border transition disabled:opacity-50 ${
+                  chatsPending
+                    ? "border-[var(--color-warn)] bg-[var(--color-warn)]/[0.1] text-[var(--color-warn)]"
+                    : "border-[var(--color-border)] hover:border-[var(--color-warn)] text-[var(--color-text-secondary)] hover:text-[var(--color-warn)]"
+                }`}
+              >
+                {chatsBusy
+                  ? "clearing…"
+                  : chatsPending
+                  ? "click again — clear chats"
+                  : "clear all chats"}
+              </button>
+              <button
+                onClick={handleClearMemories}
+                disabled={memBusy}
+                className={`font-mono text-[10.5px] uppercase tracking-[0.16em] px-3 py-1.5 border transition disabled:opacity-50 ${
+                  memPending
+                    ? "border-[var(--color-warn)] bg-[var(--color-warn)]/[0.1] text-[var(--color-warn)]"
+                    : "border-[var(--color-border)] hover:border-[var(--color-warn)] text-[var(--color-text-secondary)] hover:text-[var(--color-warn)]"
+                }`}
+              >
+                {memBusy
+                  ? memProgress
+                    ? `deleting ${memProgress.done}/${memProgress.total}…`
+                    : "deleting…"
+                  : memPending
+                  ? "click again — clear vault"
+                  : "clear all memories"}
+              </button>
+            </div>
+            <p className="font-mono text-[10.5px] text-[var(--color-text-tertiary)] mt-3 leading-[1.5]">
+              chats live in this browser only. memories live in nillion — clearing them sends one delete per entry across the 3 nodes (may take a few seconds).
+            </p>
+          </Section>
+
+          {/* Nuclear */}
           <Section
             title="danger zone"
-            subtitle="reset everything in your browser. memories in the vault stay on nillion but become orphaned without a backup."
+            subtitle="reset everything in your browser (venice key + nillion identity + chats). memories already in the vault become orphaned unless you exported a backup."
             warn
           >
             <button
