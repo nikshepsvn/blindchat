@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=VT323&display=swap");
+
+@theme {
+  /* black/blue brand — matches the BlindCache banner */
+  --color-base: #000308;
+  --color-elevated: #030814;
+  --color-panel: #050d1c;
+  --color-input: #060f22;
+  --color-border: #0f1d3a;
+  --color-border-strong: #1d3158;
+
+  --color-text-primary: #d6e2fb;
+  --color-text-secondary: #6a83b5;
+  --color-text-tertiary: #38507e;
+  --color-text-faint: #1c2c4d;
+
+  --color-accent: #4fbdff;
+  --color-accent-bright: #66ccff;
+  --color-accent-dim: #1a3c6a;
+
+  --color-success: #46d49e;
+  --color-warn: #ffaa33;
+
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "VT323", "JetBrains Mono", ui-monospace, monospace;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+html, body {
+  background: var(--color-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-feature-settings: "calt", "liga";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-base);
+}
+
+/* one understated phosphor glow used only on the brand wordmark */
+.glow {
+  text-shadow:
+    0 0 6px rgba(102, 204, 255, 0.4),
+    0 0 18px rgba(79, 189, 255, 0.18);
+}
+
+/* streaming pulse */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+.pulse-dot { animation: pulse-dot 1.2s ease-in-out infinite; }
+.pulse-dot-2 { animation-delay: 0.15s; }
+.pulse-dot-3 { animation-delay: 0.3s; }
+
+/* blinking caret */
+@keyframes caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+.caret { animation: caret 1s steps(1) infinite; }
+
+.thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--color-border); }
+.thin-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+
+select { background-image: none !important; }

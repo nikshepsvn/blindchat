@@ -1,0 +1,50 @@
+{
+  "name": "blindchat",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Private chat with portable memory. Venice TEE inference + BlindCache encrypted vault, all in the browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3939",
+    "build": "next build",
+    "start": "next start --port 3939",
+    "lint": "next lint",
+    "postinstall": "node scripts/fix-libsodium.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikshepsvn/blindchat.git"
+  },
+  "homepage": "https://github.com/nikshepsvn/blindchat#readme",
+  "bugs": "https://github.com/nikshepsvn/blindchat/issues",
+  "license": "Apache-2.0",
+  "author": "Nikshep Svn <nikshepsvn@gmail.com>",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@nillion/nuc": "^2.0.1",
+    "@nillion/secretvaults": "^3.0.0",
+    "blindcache-core": "^0.2.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "events": "^3.3.0",
+    "https-browserify": "^1.0.0",
+    "next": "^15.1.0",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}
