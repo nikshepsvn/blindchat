@@ -100,9 +100,18 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Opens at `http://localhost:3939`. On first load, the app generates a fresh NUC private key and registers a new vault on Nillion testnet. The collection ID is stored in `localStorage` alongside the key.
+Opens at `http://localhost:3939`. On first load:
 
-To wipe and start fresh: clear `localStorage` in DevTools — the next reload mints a new identity.
+1. **Onboarding** explains the four privacy primitives.
+2. **Setup** modal asks for your Venice key (validates it against `/v1/chat/completions` with a 1-token probe, then saves to IndexedDB).
+3. The app auto-generates a fresh NUC private key and registers a new vault on Nillion testnet.
+4. Everything from then on persists locally — chats, model selection, vault identity.
+
+To start fresh: **Settings → Reset everything**. Or just clear site data in DevTools.
+
+### Without an env var
+
+In production (no env var set), the Setup modal collects the Venice key from the user. No defaults, nothing baked in. The `NEXT_PUBLIC_VENICE_API_KEY` env var is purely a dev-loop shortcut.
 
 ---
 
@@ -121,31 +130,28 @@ The browser bundle does require some Node-polyfill plumbing (`stream-browserify`
 
 ---
 
-## Roadmap to production
+## What's shipped vs. what's left
 
-Today this is preview-grade. To take it to a real user-facing product:
+### Shipped
+- ✅ **Setup modal** — first-run UI to paste Venice key, validates against `/v1/chat/completions`, persists to IndexedDB
+- ✅ **Settings panel** — view/change/remove Venice key, see Nillion identity, export + import JSON backup, reset everything (all with inline two-click confirms, no native dialogs)
+- ✅ **Key recovery** — export NUC private key + collection ID as a downloadable JSON; import on a new device to restore the same vault
+- ✅ **Multi-conversation** — sidebar threads, auto-titled from first user message, click to switch, hover-to-delete, persists across reloads
+- ✅ **Strict CSP** — `script-src 'self' 'wasm-unsafe-eval'`, `connect-src` whitelist limited to Venice + Nillion testnet + HF, `frame-ancestors 'none'`, HSTS
+- ✅ **Reasoning model timeouts** — 90s per-turn AbortController + friendly error messages for 504 / 401 / 403
+- ✅ **Mobile responsive** — sidebar + memory panel become drawer sheets below 768px, top bar with ☰ and ▤ toggles
+- ✅ **Loading skeletons** — pulsing placeholder cards in MemoryPanel while the vault opens, status indicator in chat empty state
+- ✅ **Tool-calling adapter** — every Venice model can read + write the vault (Qwen3 via native function calling, the rest via the marker protocol)
+- ✅ **IndexedDB storage** — all keys + conversations + flags live in IDB (no more localStorage)
 
-### Tier 1 — must-haves before public domain
-- **Key entry UI** — first-run modal where the user pastes their Venice key + clicks "Generate vault." No more env vars.
-- **Passkey-wrapped key storage** — use WebAuthn `deriveKey` → AES-GCM the NUC + Venice keys at rest in IndexedDB. Onboarding already promises this.
-- **Key recovery** — export NUC key + collection ID as a downloadable JSON or QR. Import flow on a new device.
-- **Multi-conversation persistence** — store thread list + messages. Either in the vault (private, slow) or IndexedDB (fast, local-only).
-- **Strict CSP + XSS hardening** — content security policy headers, sanitize any model-output markdown that lands in DOM.
+### Still on the roadmap
 
-### Tier 2 — production polish
-- Reasoning model timeouts (GLM, GPT-OSS occasionally 504 on Venice's gateway — needs retry/keepalive)
-- Vault node failover (3-of-3 nilDB nodes — graceful degradation when one is down)
-- Mobile responsive (drawer for sidebar + memory panel under 900px)
-- Settings panel (manage keys, change model defaults, reset vault, export memories)
-- Memory CRUD UI (edit/pin/delete from the panel, not just via the LLM)
-- Loading skeletons (vault open is 3–5s with no visual feedback today)
-
-### Tier 3 — engineering hygiene
-- Playwright E2E tests (save/search in both native + compat modes, key recovery, multi-conversation)
-- Unit tests for `MarkerFilter` (highest-risk surface — token-streaming edge cases)
-- Bundle analyzer (the 23 MB Transformers.js model dominates — lazy-load until first vault op)
-- TypeScript `noUncheckedIndexedAccess`
-- GitHub Actions for lint/typecheck/build + preview deploys per PR
+- **Passkey-wrapped key storage** — WebAuthn `deriveKey` → AES-GCM the NUC + Venice keys at rest. The onboarding promises this; today the keys are plaintext-at-rest in IndexedDB (same threat model as localStorage). A real ship needs this. Deferred because the recovery story (lost passkey → lost vault) needs careful UX work.
+- **Vault node failover** — if a nilDB node goes down, do we fall back to the remaining two? Currently inherits whatever `@nillion/secretvaults` does. Worth a real test.
+- **Memory CRUD UI** — today only the LLM can mutate the vault via tool calls. A panel-side edit/pin/delete would help users curate.
+- **E2E tests** — Playwright for the critical flows (save/search in both memory modes, key recovery, multi-conversation persistence).
+- **Bundle analyzer + lazy-load** — the 23 MB Transformers.js model dominates the bundle; lazy-load it until first vault operation.
+- **GitHub Actions** — lint/typecheck/build + preview deploys per PR.
 
 ---
 
