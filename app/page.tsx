@@ -14,6 +14,11 @@ import { runMemoryTurn, memoryModeFor } from "@/lib/memoryWrapper";
 import { useVault } from "@/lib/useVault";
 import { useVeniceCreds } from "@/lib/useVeniceKey";
 import { kvGet, kvSet, STORAGE_KEYS } from "@/lib/storage";
+import {
+  readConversation,
+  writeConversation,
+  clearConversation,
+} from "@/lib/conversation";
 
 const BASE_SYSTEM = `You are BlindChat — a private, terminal-styled assistant. Be concise and direct. Markdown bold uses **double asterisks**.`;
 
@@ -24,6 +29,7 @@ function shortTime(): string {
 export default function ChatPage() {
   const [hoveredIds, setHoveredIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>(seedMessages);
+  const [convHydrated, setConvHydrated] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -37,6 +43,27 @@ export default function ChatPage() {
     setModel,
     reload: reloadCreds,
   } = useVeniceCreds();
+
+  // Restore the prior conversation from IDB on mount.
+  useEffect(() => {
+    (async () => {
+      const prior = await readConversation();
+      if (prior.length > 0) setMessages(prior);
+      setConvHydrated(true);
+    })();
+  }, []);
+
+  // Persist on every message change (but not until hydrated, otherwise the
+  // initial empty seed would wipe what's in IDB).
+  useEffect(() => {
+    if (!convHydrated) return;
+    if (isStreaming) return; // don't churn IDB during a stream; save on finish
+    if (messages.length === 0) {
+      clearConversation().catch(() => {});
+    } else {
+      writeConversation(messages).catch(() => {});
+    }
+  }, [messages, convHydrated, isStreaming]);
 
   useEffect(() => {
     (async () => {
@@ -52,6 +79,39 @@ export default function ChatPage() {
       return next;
     });
   }, []);
+
+  // Two-click confirm: first click sets pending, second click within 4s
+  // commits. Native confirm() blocks the page and we don't want that.
+  const [newChatPending, setNewChatPending] = useState(false);
+  const newChatTimer = useRef<number | null>(null);
+
+  const handleNewChat = useCallback(() => {
+    if (isStreaming) {
+      abortRef.current?.abort();
+    }
+    if (messages.length === 0) {
+      // Nothing to clear — never need a confirm.
+      return;
+    }
+    if (!newChatPending) {
+      setNewChatPending(true);
+      if (newChatTimer.current) window.clearTimeout(newChatTimer.current);
+      newChatTimer.current = window.setTimeout(() => {
+        setNewChatPending(false);
+        newChatTimer.current = null;
+      }, 4000);
+      return;
+    }
+    // Confirmed.
+    if (newChatTimer.current) {
+      window.clearTimeout(newChatTimer.current);
+      newChatTimer.current = null;
+    }
+    setNewChatPending(false);
+    setMessages([]);
+    setError(null);
+    clearConversation().catch(() => {});
+  }, [isStreaming, messages.length, newChatPending]);
 
   async function handleSend(text: string) {
     if (isStreaming) return;
@@ -170,10 +230,15 @@ export default function ChatPage() {
         e.preventDefault();
         togglePanel();
       }
+      // ⌘N starts a new chat.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n" && !e.shiftKey) {
+        e.preventDefault();
+        handleNewChat();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePanel]);
+  }, [togglePanel, handleNewChat]);
 
   const lastInjected =
     [...messages].reverse().find((m) => m.injectedMemoryIds)?.injectedMemoryIds ?? [];
@@ -193,6 +258,9 @@ export default function ChatPage() {
       <Sidebar
         vaultPhase={vaultState.phase}
         onOpenSettings={() => setSettingsOpen(true)}
+        onNewChat={handleNewChat}
+        hasMessages={messages.length > 0}
+        newChatPending={newChatPending}
       />
 
       <section className="flex-1 flex flex-col min-w-0">

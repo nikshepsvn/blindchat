@@ -89,8 +89,14 @@ export function Settings({
     }
   }
 
+  const [removePending, setRemovePending] = useState(false);
   async function handleRemoveVenice() {
-    if (!confirm("Remove the Venice key? You'll need to re-paste it to chat.")) return;
+    if (!removePending) {
+      setRemovePending(true);
+      setTimeout(() => setRemovePending(false), 4000);
+      return;
+    }
+    setRemovePending(false);
     await deleteVeniceKey();
     onCredsChanged();
     await refresh();
@@ -146,12 +152,14 @@ export function Settings({
     }
   }
 
+  const [resetPending, setResetPending] = useState(false);
   async function handleResetAll() {
-    if (
-      !confirm(
-        "Reset everything? This deletes the Venice key + Nillion vault identity from your browser. Memories in the vault stay on Nillion (orphaned unless you have a backup)."
-      )
-    ) return;
+    if (!resetPending) {
+      setResetPending(true);
+      setTimeout(() => setResetPending(false), 4000);
+      return;
+    }
+    setResetPending(false);
     await deleteVeniceKey();
     await resetVault();
     await kvClear();
@@ -243,9 +251,13 @@ export function Settings({
                   {veniceKey && (
                     <button
                       onClick={handleRemoveVenice}
-                      className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] hover:text-[var(--color-warn)] transition"
+                      className={`font-mono text-[10.5px] uppercase tracking-[0.16em] transition ${
+                        removePending
+                          ? "text-[var(--color-warn)]"
+                          : "text-[var(--color-text-tertiary)] hover:text-[var(--color-warn)]"
+                      }`}
                     >
-                      remove
+                      {removePending ? "click to confirm" : "remove"}
                     </button>
                   )}
                 </div>
@@ -304,9 +316,13 @@ export function Settings({
           >
             <button
               onClick={handleResetAll}
-              className="font-mono text-[10.5px] uppercase tracking-[0.16em] px-3 py-1.5 border border-[var(--color-warn)]/40 hover:border-[var(--color-warn)] text-[var(--color-warn)] transition"
+              className={`font-mono text-[10.5px] uppercase tracking-[0.16em] px-3 py-1.5 border text-[var(--color-warn)] transition ${
+                resetPending
+                  ? "border-[var(--color-warn)] bg-[var(--color-warn)]/[0.1]"
+                  : "border-[var(--color-warn)]/40 hover:border-[var(--color-warn)]"
+              }`}
             >
-              reset everything
+              {resetPending ? "click again to confirm" : "reset everything"}
             </button>
           </Section>
         </div>

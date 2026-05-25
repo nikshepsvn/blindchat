@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-
-const STORAGE_KEY = "bc_onboarding_seen_v1";
+import { kvGet, kvSet, STORAGE_KEYS } from "@/lib/storage";
 
 type Step = {
   slug: string;
@@ -141,11 +140,10 @@ export function OnboardingProvider() {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
-    try {
-      if (!localStorage.getItem(STORAGE_KEY)) setOpen(true);
-    } catch {
-      setOpen(true);
-    }
+    (async () => {
+      const seen = await kvGet<string | boolean>(STORAGE_KEYS.onboardingSeen);
+      if (!seen) setOpen(true);
+    })();
     function onOpen() {
       setIdx(0);
       setOpen(true);
@@ -155,11 +153,7 @@ export function OnboardingProvider() {
   }, []);
 
   function dismiss() {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(Date.now()));
-    } catch {
-      /* private mode etc */
-    }
+    kvSet(STORAGE_KEYS.onboardingSeen, new Date().toISOString()).catch(() => {});
     setOpen(false);
   }
   function next() {
@@ -199,7 +193,7 @@ export function OnboardingProvider() {
 
   return (
     <div
-      className="fixed inset-0 z-[400] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/85 backdrop-blur-sm"
       onClick={dismiss}
     >
       <div
