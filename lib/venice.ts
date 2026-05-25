@@ -157,19 +157,8 @@ export async function* streamVeniceTurn({
   yield { kind: "done", content, toolCalls, finishReason };
 }
 
-export function getVeniceKey(): string {
-  const k = process.env.NEXT_PUBLIC_VENICE_API_KEY ?? "";
-  if (!k) {
-    throw new Error(
-      "NEXT_PUBLIC_VENICE_API_KEY missing. Set it in apps/chat/.env.local."
-    );
-  }
-  return k;
-}
-
-export function getVeniceModel(): string {
-  return process.env.NEXT_PUBLIC_VENICE_MODEL ?? "e2ee-qwen3-30b-a3b-p";
-}
+// Note: key + model accessors live in lib/veniceKey.ts now (IndexedDB-backed,
+// with NEXT_PUBLIC_VENICE_API_KEY as a dev fallback).
 
 /**
  * Curated TEE + E2EE-capable Venice models.

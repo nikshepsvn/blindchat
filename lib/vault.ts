@@ -1,8 +1,9 @@
 // Browser-side BlindCache wrapper.
 //
-// Generates an ephemeral NUC key on first load (stored in localStorage) and
-// uses it to open a Vault against Nillion testnet nodes. The vault handle is
-// memoized so React StrictMode double-effects don't open it twice.
+// Reads the NUC private key + collection ID from IndexedDB (migrating from
+// legacy localStorage on first run). Opens the vault against Nillion testnet
+// nodes. The vault handle is memoized so React StrictMode double-effects
+// don't open it twice.
 //
 // We dynamically-import @nillion/* + blindcache-core because the SDK reads
 // `process.env` at module-evaluation time — we have to install a browser shim
@@ -11,9 +12,7 @@
 "use client";
 
 import type { Vault as VaultType, MemoryEntry, SearchInput } from "blindcache-core";
-
-const KEY_STORAGE = "bc_nuc_privkey_v1";
-const COLLECTION_STORAGE = "bc_collection_id_v1";
+import { kvGet, kvSet, kvDelete, STORAGE_KEYS } from "@/lib/storage";
 
 const TESTNET_DBS = [
   "https://nildb-stg-n1.nillion.network",
@@ -33,13 +32,17 @@ function shimNodeGlobals() {
   }
 }
 
-function getOrCreatePrivateKey(): string {
-  const existing = localStorage.getItem(KEY_STORAGE);
-  if (existing && /^[0-9a-f]{64}$/i.test(existing)) return existing;
+function genHexKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  localStorage.setItem(KEY_STORAGE, hex);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function getOrCreatePrivateKey(): Promise<string> {
+  const existing = await kvGet<string>(STORAGE_KEYS.nucPrivateKey);
+  if (existing && /^[0-9a-f]{64}$/i.test(existing)) return existing;
+  const hex = genHexKey();
+  await kvSet(STORAGE_KEYS.nucPrivateKey, hex);
   return hex;
 }
 
@@ -53,17 +56,17 @@ export function openVault(): Promise<VaultType> {
         import("@nillion/nuc"),
         import("blindcache-core"),
       ]);
-      const privateKey = getOrCreatePrivateKey();
+      const privateKey = await getOrCreatePrivateKey();
       const signer = Signer.fromPrivateKey(privateKey, "key");
       const collectionId =
-        localStorage.getItem(COLLECTION_STORAGE) ?? undefined;
+        (await kvGet<string>(STORAGE_KEYS.collectionId)) ?? undefined;
       const vault = await Vault.openWithSigner(signer, {
         dbs: TESTNET_DBS,
         collectionId,
         builderName: "blindchat",
       });
       const id = vault.getCollectionId();
-      if (id !== collectionId) localStorage.setItem(COLLECTION_STORAGE, id);
+      if (id !== collectionId) await kvSet(STORAGE_KEYS.collectionId, id);
       return vault;
     })();
   }
@@ -72,8 +75,37 @@ export function openVault(): Promise<VaultType> {
 
 export type { MemoryEntry, SearchInput };
 
-export function resetVault() {
-  localStorage.removeItem(KEY_STORAGE);
-  localStorage.removeItem(COLLECTION_STORAGE);
+/** Clear vault identity and force a fresh key + collection on next open. */
+export async function resetVault(): Promise<void> {
+  await kvDelete(STORAGE_KEYS.nucPrivateKey);
+  await kvDelete(STORAGE_KEYS.collectionId);
   vaultPromise = null;
+}
+
+/** Replace the active key + collection (used by the import-backup flow). */
+export async function adoptIdentity(opts: {
+  privateKey: string;
+  collectionId?: string;
+}): Promise<void> {
+  if (!/^[0-9a-f]{64}$/i.test(opts.privateKey)) {
+    throw new Error("private key must be a 64-character hex string");
+  }
+  await kvSet(STORAGE_KEYS.nucPrivateKey, opts.privateKey);
+  if (opts.collectionId) {
+    await kvSet(STORAGE_KEYS.collectionId, opts.collectionId);
+  } else {
+    await kvDelete(STORAGE_KEYS.collectionId);
+  }
+  vaultPromise = null;
+}
+
+/** Read the current identity (for the settings panel display + export). */
+export async function readIdentity(): Promise<{
+  privateKey: string | null;
+  collectionId: string | null;
+}> {
+  return {
+    privateKey: await kvGet<string>(STORAGE_KEYS.nucPrivateKey),
+    collectionId: await kvGet<string>(STORAGE_KEYS.collectionId),
+  };
 }

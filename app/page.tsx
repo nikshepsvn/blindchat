@@ -6,14 +6,15 @@ import { ChatThread } from "@/components/ChatThread";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { MessageInput } from "@/components/MessageInput";
 import { OnboardingProvider } from "@/components/Onboarding";
+import { Setup } from "@/components/Setup";
 import { seedMessages, type Message } from "@/lib/mockData";
-import { getVeniceKey, getVeniceModel, type VeniceMessage } from "@/lib/venice";
+import { type VeniceMessage } from "@/lib/venice";
 import { runMemoryTurn, memoryModeFor } from "@/lib/memoryWrapper";
 import { useVault } from "@/lib/useVault";
+import { useVeniceCreds } from "@/lib/useVeniceKey";
+import { kvGet, kvSet, STORAGE_KEYS } from "@/lib/storage";
 
 const BASE_SYSTEM = `You are BlindChat — a private, terminal-styled assistant. Be concise and direct. Markdown bold uses **double asterisks**.`;
-
-const PANEL_COLLAPSED_KEY = "bc_memory_panel_collapsed_v1";
 
 function shortTime(): string {
   return "just now";
@@ -22,36 +23,39 @@ function shortTime(): string {
 export default function ChatPage() {
   const [hoveredIds, setHoveredIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>(seedMessages);
-  const [model, setModel] = useState(getVeniceModel());
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const { state: vaultState, memories, refresh, refreshing } = useVault();
+  const {
+    state: credsState,
+    setVeniceKey,
+    setModel,
+  } = useVeniceCreds();
 
   useEffect(() => {
-    try {
-      setPanelCollapsed(localStorage.getItem(PANEL_COLLAPSED_KEY) === "1");
-    } catch {
-      /* private mode */
-    }
+    (async () => {
+      const v = await kvGet<boolean | string>(STORAGE_KEYS.panelCollapsed);
+      setPanelCollapsed(v === true || v === "1");
+    })();
   }, []);
 
   const togglePanel = useCallback(() => {
     setPanelCollapsed((c) => {
       const next = !c;
-      try {
-        localStorage.setItem(PANEL_COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* private mode */
-      }
+      kvSet(STORAGE_KEYS.panelCollapsed, next).catch(() => {});
       return next;
     });
   }, []);
 
   async function handleSend(text: string) {
     if (isStreaming) return;
+    if (!credsState.veniceKey) {
+      setError("Venice key missing — paste one in setup to send messages.");
+      return;
+    }
     setError(null);
 
     const userMsg: Message = {
@@ -76,19 +80,6 @@ export default function ChatPage() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    const apiKey = (() => {
-      try {
-        return getVeniceKey();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-        return null;
-      }
-    })();
-    if (!apiKey) {
-      setIsStreaming(false);
-      return;
-    }
-
     const conversation: VeniceMessage[] = [
       ...messages.map<VeniceMessage>((m) => ({ role: m.role, content: m.content })),
       { role: "user", content: text },
@@ -99,8 +90,8 @@ export default function ChatPage() {
 
     try {
       for await (const ev of runMemoryTurn({
-        apiKey,
-        model,
+        apiKey: credsState.veniceKey,
+        model: credsState.model,
         baseSystem: BASE_SYSTEM,
         conversation,
         signal: ac.signal,
@@ -184,11 +175,13 @@ export default function ChatPage() {
   const lastInjected =
     [...messages].reverse().find((m) => m.injectedMemoryIds)?.injectedMemoryIds ?? [];
 
-  const mode = memoryModeFor(model, vaultState.phase === "ready");
+  const mode = memoryModeFor(credsState.model, vaultState.phase === "ready");
+  const needsSetup = credsState.ready && !credsState.veniceKey;
 
   return (
     <main className="h-screen w-screen flex bg-[var(--color-base)] overflow-hidden">
       <OnboardingProvider />
+      {needsSetup && <Setup onComplete={setVeniceKey} />}
       <Sidebar vaultPhase={vaultState.phase} />
 
       <section className="flex-1 flex flex-col min-w-0">
@@ -203,7 +196,7 @@ export default function ChatPage() {
           </div>
         )}
         <MessageInput
-          model={model}
+          model={credsState.model}
           onModelChange={setModel}
           onSend={handleSend}
           onStop={handleStop}
